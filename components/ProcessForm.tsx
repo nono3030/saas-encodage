@@ -40,7 +40,7 @@ export function ProcessForm() {
       fetch(`/api/tabs?docUrl=${encodeURIComponent(docUrl)}`)
         .then(r => r.json())
         .then((data: DocTab[]) => {
-          setTabs(Array.isArray(data) && data.length > 1 ? data : []);
+          setTabs(Array.isArray(data) ? data : []);
           setTabId('');
         })
         .catch(() => { setTabs([]); setTabId(''); });
@@ -145,25 +145,23 @@ export function ProcessForm() {
             />
           </div>
 
-          {/* Tab selector — only shown when doc has multiple tabs */}
-          {tabs.length > 0 && (
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Onglet du document
-              </label>
-              <select
-                value={tabId}
-                onChange={e => setTabId(e.target.value)}
-                disabled={isProcessing}
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:opacity-50 disabled:bg-slate-50 bg-white"
-              >
-                <option value="">— Premier onglet (défaut) —</option>
-                {tabs.map(t => (
-                  <option key={t.tabId} value={t.tabId}>{t.title}</option>
-                ))}
-              </select>
-            </div>
-          )}
+          {/* Tab selector — always visible, empty when doc has no tabs */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Onglet du document
+            </label>
+            <select
+              value={tabId}
+              onChange={e => setTabId(e.target.value)}
+              disabled={isProcessing || tabs.length === 0}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:opacity-50 disabled:bg-slate-50 bg-white"
+            >
+              <option value="">{tabs.length === 0 ? '— Aucun onglet détecté —' : '— Premier onglet (défaut) —'}</option>
+              {tabs.map(t => (
+                <option key={t.tabId} value={t.tabId}>{t.title}</option>
+              ))}
+            </select>
+          </div>
 
           {/* Asset name + ID row */}
           <div className="grid grid-cols-2 gap-3">
