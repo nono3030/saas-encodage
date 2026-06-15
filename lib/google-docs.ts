@@ -191,21 +191,23 @@ async function registerImage(
   contentUri: string,
   altText: string,
   widthPt: number,
+  heightPt: number,
   ctx: ScanContext
-): Promise<{ token: string; width: number } | null> {
+): Promise<{ token: string; width: number; height: number } | null> {
   const img = await downloadImage(contentUri, ctx.accessToken);
   if (!img) return null;
 
   const hash = createHash('md5').update(img.base64.substring(0, 500)).digest('hex').substring(0, 12);
   const token = `{{IMG_${hash}}}`;
   const ext = img.mimeType.split('/')[1]?.split('+')[0] || 'jpg';
-  const width = Math.round(widthPt * 1.333); // pt → px approx
+  const width = Math.round(widthPt * 1.333);
+  const height = Math.round(heightPt * 1.333);
 
   if (!ctx.images[token]) {
     ctx.images[token] = { base64: img.base64, name: altText || 'image', mimeType: img.mimeType, hash };
   }
 
-  return { token, width };
+  return { token, width, height };
 }
 
 // ─── Text content ─────────────────────────────────────────────────────────────
@@ -253,10 +255,14 @@ async function processTextContent(
       const embedded = obj?.inlineObjectProperties?.embeddedObject;
       if (embedded?.imageProperties?.contentUri) {
         const widthPt = embedded.imageProperties.size?.width?.magnitude || 400;
+        const heightPt = embedded.imageProperties.size?.height?.magnitude || 0;
         const alt = embedded.title || embedded.description || 'Image';
-        const result = await registerImage(embedded.imageProperties.contentUri, alt, widthPt, ctx);
+        const result = await registerImage(embedded.imageProperties.contentUri, alt, widthPt, heightPt, ctx);
         if (result) {
-          sb += `<img src="${result.token}" alt="${escapeHtml(alt)}" width="${result.width}" style="display:block;border:0;height:auto;width:100%;max-width:${result.width}px;" />`;
+          const dimStyle = result.height > 0
+            ? `height:${result.height}px;width:${result.width}px;`
+            : `height:auto;width:${result.width}px;`;
+          sb += `<table width="${result.width}" cellspacing="0" cellpadding="0" role="presentation" style="border:0;"><tr><td align="center"><img src="${result.token}" alt="${escapeHtml(alt)}" height="${result.height || 'auto'}" width="${result.width}" style="display:block;padding:0;${dimStyle}" /></td></tr></table>`;
         }
       }
 
@@ -331,10 +337,14 @@ async function processParagraph(p: Paragraph, ctx: ScanContext): Promise<string>
       const embedded = posObj?.positionedObjectProperties?.embeddedObject;
       if (embedded?.imageProperties?.contentUri) {
         const widthPt = embedded.imageProperties.size?.width?.magnitude || 400;
+        const heightPt = embedded.imageProperties.size?.height?.magnitude || 0;
         const alt = embedded.title || embedded.description || 'Image';
-        const result = await registerImage(embedded.imageProperties.contentUri, alt, widthPt, ctx);
+        const result = await registerImage(embedded.imageProperties.contentUri, alt, widthPt, heightPt, ctx);
         if (result) {
-          imgBuffer += `<img src="${result.token}" alt="${escapeHtml(alt)}" width="${result.width}" style="float:left;display:block;padding:0 15px 10px 0;border:0;height:auto;width:100%;max-width:${result.width}px;" />`;
+          const dimStyle = result.height > 0
+            ? `height:${result.height}px;width:${result.width}px;`
+            : `height:auto;width:${result.width}px;`;
+          imgBuffer += `<table width="${result.width}" cellspacing="0" cellpadding="0" role="presentation" style="float:left;margin:0 15px 10px 0;border:0;"><tr><td><img src="${result.token}" alt="${escapeHtml(alt)}" height="${result.height || 'auto'}" width="${result.width}" style="display:block;padding:0;${dimStyle}" /></td></tr></table>`;
         }
       }
     }
