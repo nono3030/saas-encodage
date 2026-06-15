@@ -115,6 +115,20 @@ interface FootnoteContent {
   content?: StructuralElement[];
 }
 
+interface TabDocumentContent {
+  body: { content: StructuralElement[] };
+  inlineObjects?: Record<string, InlineObject>;
+  positionedObjects?: Record<string, { positionedObjectProperties?: { embeddedObject?: EmbeddedObject } }>;
+  lists?: Record<string, ListDefinition>;
+  footnotes?: Record<string, FootnoteContent>;
+}
+
+interface DocTabRaw {
+  tabProperties: { tabId: string; title: string; index: number };
+  documentTab?: TabDocumentContent;
+  childTabs?: DocTabRaw[];
+}
+
 interface DocsDocument {
   documentId: string;
   title: string;
@@ -123,6 +137,7 @@ interface DocsDocument {
   positionedObjects?: Record<string, { positionedObjectProperties?: { embeddedObject?: EmbeddedObject } }>;
   lists?: Record<string, ListDefinition>;
   footnotes?: Record<string, FootnoteContent>;
+  tabs?: DocTabRaw[];
 }
 
 // ─── Context shared across recursive calls ────────────────────────────────────
@@ -474,12 +489,11 @@ export function extractDocIdFromUrl(url: string): string {
   return extractDocId(url);
 }
 
-export async function extractDocContent(docIdOrUrl: string, accessToken: string): Promise<ScanResult> {
+export async function extractDocContent(docIdOrUrl: string, accessToken: string, tabId?: string): Promise<ScanResult> {
   const docId = docIdOrUrl.startsWith('http') ? extractDocId(docIdOrUrl) : docIdOrUrl;
 
-  const res = await fetch(`https://docs.googleapis.com/v1/documents/${docId}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+  const url = `https://docs.googleapis.com/v1/documents/${docId}${tabId ? '?includeTabsContent=true' : ''}`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
 
   if (!res.ok) {
     const err = await res.text();
@@ -488,21 +502,32 @@ export async function extractDocContent(docIdOrUrl: string, accessToken: string)
 
   const doc: DocsDocument = await res.json();
 
+  // Resolve content source: specific tab or root body
+  let content: TabDocumentContent;
+  if (tabId && doc.tabs?.length) {
+    const allTabs = flattenTabs(doc.tabs);
+    const tab = allTabs.find(t => t.tabProperties.tabId === tabId);
+    if (!tab?.documentTab) throw new Error(`Onglet "${tabId}" introuvable dans le document.`);
+    content = tab.documentTab;
+  } else {
+    content = { body: doc.body, inlineObjects: doc.inlineObjects, positionedObjects: doc.positionedObjects, lists: doc.lists, footnotes: doc.footnotes };
+  }
+
   const ctx: ScanContext = {
     images: {},
     footnotesData: [],
     ctaCounter: 1,
-    inlineObjects: doc.inlineObjects || {},
-    positionedObjects: doc.positionedObjects || {},
-    lists: doc.lists || {},
-    footnotes: doc.footnotes || {},
+    inlineObjects: content.inlineObjects || {},
+    positionedObjects: content.positionedObjects || {},
+    lists: content.lists || {},
+    footnotes: content.footnotes || {},
     accessToken,
     docId,
   };
 
   const sb: string[] = [];
 
-  for (const se of doc.body.content || []) {
+  for (const se of content.body.content || []) {
     try {
       if (se.paragraph) {
         if (se.paragraph.bullet) {
@@ -529,4 +554,29 @@ export async function extractDocContent(docIdOrUrl: string, accessToken: string)
     htmlRaw: sb.filter(Boolean).join('\n'),
     images: ctx.images,
   };
+}
+
+function flattenTabs(tabs: DocTabRaw[]): DocTabRaw[] {
+  const result: DocTabRaw[] = [];
+  for (const tab of tabs) {
+    result.push(tab);
+    if (tab.childTabs?.length) result.push(...flattenTabs(tab.childTabs));
+  }
+  return result;
+}
+
+export async function fetchDocTabs(docIdOrUrl: string, accessToken: string): Promise<import('./types').DocTab[]> {
+  const docId = docIdOrUrl.startsWith('http') ? extractDocId(docIdOrUrl) : docIdOrUrl;
+  const res = await fetch(
+    `https://docs.googleapis.com/v1/documents/${docId}?fields=tabs.tabProperties,tabs.childTabs.tabProperties`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!res.ok) return [];
+  const doc = await res.json();
+  if (!doc.tabs?.length) return [];
+  return flattenTabs(doc.tabs).map((t: DocTabRaw) => ({
+    tabId: t.tabProperties.tabId,
+    title: t.tabProperties.title || `Onglet ${t.tabProperties.index + 1}`,
+    index: t.tabProperties.index,
+  }));
 }

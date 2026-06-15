@@ -3,6 +3,13 @@ export interface ProcessConfig {
   assetName?: string;
   assetId?: string;
   templateId?: string;
+  tabId?: string;
+}
+
+export interface DocTab {
+  tabId: string;
+  title: string;
+  index: number;
 }
 
 export interface ProcessResult {

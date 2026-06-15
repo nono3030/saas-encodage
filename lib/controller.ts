@@ -92,7 +92,7 @@ export async function executeProcess(
   // 1. Scan
   log('Scan du document...', 10);
   const docId = extractDocIdFromUrl(docUrl);
-  const scanResult = await extractDocContent(docId, accessToken);
+  const scanResult = await extractDocContent(docId, accessToken, config.tabId);
   log('Scan terminé.', 30);
 
   // 2. Template info

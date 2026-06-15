@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import type { SfmcTemplate, ProgressEvent, ProcessResult } from '@/lib/types';
+import type { SfmcTemplate, ProgressEvent, ProcessResult, DocTab } from '@/lib/types';
 
 export function ProcessForm() {
   const [docUrl, setDocUrl] = useState('');
   const [assetName, setAssetName] = useState('');
   const [assetId, setAssetId] = useState('');
   const [templateId, setTemplateId] = useState('');
+  const [tabId, setTabId] = useState('');
+  const [tabs, setTabs] = useState<DocTab[]>([]);
   const [templates, setTemplates] = useState<SfmcTemplate[]>([]);
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [logs, setLogs] = useState<string[]>([]);
@@ -33,6 +35,20 @@ export function ProcessForm() {
   }, []);
 
   useEffect(() => {
+    if (!docUrl.includes('docs.google.com')) { setTabs([]); setTabId(''); return; }
+    const timer = setTimeout(() => {
+      fetch(`/api/tabs?docUrl=${encodeURIComponent(docUrl)}`)
+        .then(r => r.json())
+        .then((data: DocTab[]) => {
+          setTabs(Array.isArray(data) && data.length > 1 ? data : []);
+          setTabId('');
+        })
+        .catch(() => { setTabs([]); setTabId(''); });
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [docUrl]);
+
+  useEffect(() => {
     if (logRef.current) {
       logRef.current.scrollTop = logRef.current.scrollHeight;
     }
@@ -49,7 +65,7 @@ export function ProcessForm() {
       const res = await fetch('/api/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ docUrl, assetName: assetName || undefined, assetId: assetId || undefined, templateId: templateId || undefined }),
+        body: JSON.stringify({ docUrl, assetName: assetName || undefined, assetId: assetId || undefined, templateId: templateId || undefined, tabId: tabId || undefined }),
       });
 
       if (!res.ok || !res.body) {
@@ -128,6 +144,26 @@ export function ProcessForm() {
               className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:opacity-50 disabled:bg-slate-50"
             />
           </div>
+
+          {/* Tab selector — only shown when doc has multiple tabs */}
+          {tabs.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Onglet du document
+              </label>
+              <select
+                value={tabId}
+                onChange={e => setTabId(e.target.value)}
+                disabled={isProcessing}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:opacity-50 disabled:bg-slate-50 bg-white"
+              >
+                <option value="">— Premier onglet (défaut) —</option>
+                {tabs.map(t => (
+                  <option key={t.tabId} value={t.tabId}>{t.title}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Asset name + ID row */}
           <div className="grid grid-cols-2 gap-3">
