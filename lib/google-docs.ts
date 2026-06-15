@@ -259,10 +259,7 @@ async function processTextContent(
         const alt = embedded.title || embedded.description || 'Image';
         const result = await registerImage(embedded.imageProperties.contentUri, alt, widthPt, heightPt, ctx);
         if (result) {
-          const dimStyle = result.height > 0
-            ? `height:${result.height}px;width:${result.width}px;`
-            : `height:auto;width:${result.width}px;`;
-          sb += `<table width="${result.width}" cellspacing="0" cellpadding="0" role="presentation" style="border:0;"><tr><td align="center"><img src="${result.token}" alt="${escapeHtml(alt)}" height="${result.height || 'auto'}" width="${result.width}" style="display:block;padding:0;${dimStyle}" /></td></tr></table>`;
+          sb += `<img src="${result.token}" alt="${escapeHtml(alt)}" width="${result.width}" height="${result.height || 'auto'}" style="display:inline-block;vertical-align:middle;" />`;
         }
       }
 
@@ -327,6 +324,32 @@ async function processParagraph(p: Paragraph, ctx: ScanContext): Promise<string>
   // Skip empty paragraphs
   if (elements.every(e => !e.textRun?.content?.trim() && !e.inlineObjectElement && !e.footnoteReference)) {
     return '';
+  }
+
+  // Image-only paragraph → single table row with one <td> per image
+  const hasText = elements.some(e => e.textRun?.content?.trim() || e.footnoteReference);
+  const imageOnlyElements = elements.filter(e => e.inlineObjectElement);
+  if (!hasText && imageOnlyElements.length > 0) {
+    let cells = '';
+    for (const el of imageOnlyElements) {
+      const obj = ctx.inlineObjects[el.inlineObjectElement!.inlineObjectId];
+      const embedded = obj?.inlineObjectProperties?.embeddedObject;
+      if (embedded?.imageProperties?.contentUri) {
+        const widthPt = embedded.imageProperties.size?.width?.magnitude || 400;
+        const heightPt = embedded.imageProperties.size?.height?.magnitude || 0;
+        const alt = embedded.title || embedded.description || '';
+        const result = await registerImage(embedded.imageProperties.contentUri, alt, widthPt, heightPt, ctx);
+        if (result) {
+          const dimStyle = result.height > 0
+            ? `height:${result.height}px;width:${result.width}px;`
+            : `height:auto;width:${result.width}px;`;
+          cells += `<td align="center" valign="top" style="padding:5px;"><img src="${result.token}" alt="${escapeHtml(alt)}" width="${result.width}" height="${result.height || 'auto'}" style="display:block;padding:0;${dimStyle}" /></td>`;
+        }
+      }
+    }
+    if (cells) {
+      return `<table width="100%" border="0" cellspacing="0" cellpadding="0" role="presentation" style="border-collapse:collapse;"><tr>${cells}</tr></table>`;
+    }
   }
 
   // Positioned images (before the paragraph)
