@@ -343,7 +343,7 @@ async function processParagraph(p: Paragraph, ctx: ScanContext): Promise<string>
           const dimStyle = result.height > 0
             ? `height:${result.height}px;width:${result.width}px;`
             : `height:auto;width:${result.width}px;`;
-          cells += `<td align="center" valign="top" style="padding:5px;"><img src="${result.token}" alt="${escapeHtml(alt)}" width="${result.width}" height="${result.height || 'auto'}" style="display:block;padding:0;${dimStyle}" /></td>`;
+          cells += `<td align="center" valign="top" style="padding:5px;"><img src="${result.token}" alt="${escapeHtml(alt)}" width="${result.width}" height="${result.height || 'auto'}" style="display:block;padding:0;max-width:100%;height:auto;" /></td>`;
         }
       }
     }
