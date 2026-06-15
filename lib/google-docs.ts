@@ -492,7 +492,7 @@ export function extractDocIdFromUrl(url: string): string {
 export async function extractDocContent(docIdOrUrl: string, accessToken: string, tabId?: string): Promise<ScanResult> {
   const docId = docIdOrUrl.startsWith('http') ? extractDocId(docIdOrUrl) : docIdOrUrl;
 
-  const url = `https://docs.googleapis.com/v1/documents/${docId}${tabId ? '?includeTabsContent=true' : ''}`;
+  const url = `https://docs.googleapis.com/v1/documents/${docId}?includeTabsContent=true`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
 
   if (!res.ok) {
@@ -502,13 +502,19 @@ export async function extractDocContent(docIdOrUrl: string, accessToken: string,
 
   const doc: DocsDocument = await res.json();
 
-  // Resolve content source: specific tab or root body
+  // Resolve content source: specific tab, first tab, or root body (for docs without tabs)
   let content: TabDocumentContent;
-  if (tabId && doc.tabs?.length) {
+  if (doc.tabs?.length) {
     const allTabs = flattenTabs(doc.tabs);
-    const tab = allTabs.find(t => t.tabProperties.tabId === tabId);
-    if (!tab?.documentTab) throw new Error(`Onglet "${tabId}" introuvable dans le document.`);
-    content = tab.documentTab;
+    const tab = tabId
+      ? allTabs.find(t => t.tabProperties.tabId === tabId)
+      : allTabs[0];
+    if (!tab?.documentTab) {
+      if (tabId) throw new Error(`Onglet "${tabId}" introuvable dans le document.`);
+      content = { body: doc.body, inlineObjects: doc.inlineObjects, positionedObjects: doc.positionedObjects, lists: doc.lists, footnotes: doc.footnotes };
+    } else {
+      content = tab.documentTab;
+    }
   } else {
     content = { body: doc.body, inlineObjects: doc.inlineObjects, positionedObjects: doc.positionedObjects, lists: doc.lists, footnotes: doc.footnotes };
   }

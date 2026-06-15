@@ -1,4 +1,19 @@
 const MODEL = 'gemini-2.5-flash';
+const RETRY_DELAYS_MS = [3000, 8000];
+
+async function callGemini(url: string, body: object): Promise<Response> {
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(300_000),
+    });
+    if (res.status !== 503 || attempt === RETRY_DELAYS_MS.length) return res;
+    await new Promise(r => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+  }
+  throw new Error('Gemini unreachable');
+}
 
 export async function processHtml(rawHtml: string): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -21,12 +36,7 @@ export async function processHtml(rawHtml: string): Promise<string> {
     '3. NE COUPE PAS LE TEXTE. Renvoie la totalité du HTML sans markdown.\n\n' +
     'CODE :\n' + html;
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-    signal: AbortSignal.timeout(300_000),
-  });
+  const res = await callGemini(url, { contents: [{ parts: [{ text: prompt }] }] });
 
   if (!res.ok) {
     const err = await res.text();

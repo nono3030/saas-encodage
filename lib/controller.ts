@@ -114,32 +114,32 @@ export async function executeProcess(
     }
   }
 
-  // 3. AI cleanup
-  log('Nettoyage IA (Gemini)...', 42);
-  let finalHtml = htmlRaw;
-  try {
-    finalHtml = await processHtml(htmlRaw);
-    log('IA : Succès.', 60);
-  } catch (e) {
-    log(`IA échouée → HTML brut utilisé. (${(e as Error).message})`, 60);
-    finalHtml = htmlRaw;
-  }
-
-  // 4. Upload images
+  // 3. Upload images (before AI so tokens are real URLs when Gemini runs)
   const imageEntries = Object.entries(scanResult.images);
-  log(`Upload de ${imageEntries.length} image(s) vers SFMC...`, 65);
+  log(`Upload de ${imageEntries.length} image(s) vers SFMC...`, 42);
   let imgCount = 0;
 
   for (const [token, imgData] of imageEntries) {
     try {
       const url = await uploadImage(imgData.base64, imgData.name, imgData.mimeType, tenant);
-      finalHtml = finalHtml.split(token).join(url);
+      htmlRaw = htmlRaw.split(token).join(url);
       imgCount++;
     } catch (e) {
       log(`Erreur upload image: ${imgData.name} — ${(e as Error).message}`);
     }
   }
-  log(`${imgCount} image(s) traitée(s).`, 85);
+  log(`${imgCount} image(s) traitée(s).`, 60);
+
+  // 4. AI cleanup (runs on HTML with real SFMC image URLs)
+  log('Nettoyage IA (Gemini)...', 65);
+  let finalHtml = htmlRaw;
+  try {
+    finalHtml = await processHtml(htmlRaw);
+    log('IA : Succès.', 85);
+  } catch (e) {
+    log(`IA échouée → HTML brut utilisé. (${(e as Error).message})`, 85);
+    finalHtml = htmlRaw;
+  }
 
   // 5. Apply template styles
   if (templateInfo?.globalStyles) {
