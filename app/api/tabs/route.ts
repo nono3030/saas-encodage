@@ -16,8 +16,10 @@ export async function GET(request: Request) {
 
   try {
     const tabs = await fetchDocTabs(docUrl, session.accessToken);
+    console.log('[/api/tabs] returning', tabs.length, 'tabs');
     return Response.json(tabs);
-  } catch {
+  } catch (e) {
+    console.error('[/api/tabs] error', e);
     return Response.json([]);
   }
 }
