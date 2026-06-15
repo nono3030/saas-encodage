@@ -12,11 +12,13 @@ export interface TenantConfig {
 type TenantsMap = Record<string, TenantConfig>;
 
 function loadTenants(): TenantsMap {
-  // En prod (Vercel) : variable d'env TENANTS_CONFIG contenant le JSON
   if (process.env.TENANTS_CONFIG) {
-    return JSON.parse(process.env.TENANTS_CONFIG) as TenantsMap;
+    try {
+      return JSON.parse(process.env.TENANTS_CONFIG) as TenantsMap;
+    } catch {
+      return {};
+    }
   }
-  // En dev local : fichier tenants.json à la racine
   try {
     const file = readFileSync(join(process.cwd(), 'tenants.json'), 'utf-8');
     return JSON.parse(file) as TenantsMap;
