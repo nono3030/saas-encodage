@@ -3,6 +3,7 @@ import GoogleProvider from 'next-auth/providers/google';
 import { isAuthorizedDomain } from './tenants';
 
 export const authOptions: NextAuthOptions = {
+  debug: true,
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
