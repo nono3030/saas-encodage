@@ -567,8 +567,11 @@ function flattenTabs(tabs: DocTabRaw[]): DocTabRaw[] {
 
 export async function fetchDocTabs(docIdOrUrl: string, accessToken: string): Promise<import('./types').DocTab[]> {
   const docId = docIdOrUrl.startsWith('http') ? extractDocId(docIdOrUrl) : docIdOrUrl;
+  // includeTabsContent=true is required to populate the tabs array in the response.
+  // The fields filter keeps the response small (tab metadata only, no content).
+  const fields = encodeURIComponent('tabs(tabProperties,childTabs(tabProperties,childTabs(tabProperties)))');
   const res = await fetch(
-    `https://docs.googleapis.com/v1/documents/${docId}?includeTabsContent=false`,
+    `https://docs.googleapis.com/v1/documents/${docId}?includeTabsContent=true&fields=${fields}`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   if (!res.ok) return [];
