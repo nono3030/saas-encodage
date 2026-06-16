@@ -1,8 +1,7 @@
 export interface ProcessConfig {
-  docUrl: string;
+  docUrl?: string;
   assetName?: string;
   assetId?: string;
-  templateId?: string;
   tabId?: string;
 }
 
@@ -51,3 +50,4 @@ export interface SfmcTemplateInfo {
   slots: string[];
   slotName: string;
 }
+

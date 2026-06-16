@@ -1,16 +1,18 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import type { SfmcTemplate, ProgressEvent, ProcessResult, DocTab } from '@/lib/types';
+import type { ProgressEvent, ProcessResult, DocTab } from '@/lib/types';
+
+type Mode = 'gdoc' | 'docx';
 
 export function ProcessForm() {
+  const [mode, setMode] = useState<Mode>('gdoc');
   const [docUrl, setDocUrl] = useState('');
+  const [docxFile, setDocxFile] = useState<File | null>(null);
   const [assetName, setAssetName] = useState('');
   const [assetId, setAssetId] = useState('');
-  const [templateId, setTemplateId] = useState('');
   const [tabId, setTabId] = useState('');
   const [tabs, setTabs] = useState<DocTab[]>([]);
-  const [templates, setTemplates] = useState<SfmcTemplate[]>([]);
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [logs, setLogs] = useState<string[]>([]);
   const [progress, setProgress] = useState(0);
@@ -27,15 +29,13 @@ export function ProcessForm() {
     setTimeout(() => setCopiedCta(false), 2000);
   }
 
+  // Tab detection for Google Doc
   useEffect(() => {
-    fetch('/api/templates')
-      .then(r => r.json())
-      .then(data => { if (Array.isArray(data)) setTemplates(data); })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (!docUrl.includes('docs.google.com')) { setTabs([]); setTabId(''); return; }
+    if (mode !== 'gdoc' || !docUrl.includes('docs.google.com')) {
+      setTabs([]);
+      setTabId('');
+      return;
+    }
     const timer = setTimeout(() => {
       fetch(`/api/tabs?docUrl=${encodeURIComponent(docUrl)}`)
         .then(r => r.json())
@@ -46,7 +46,7 @@ export function ProcessForm() {
         .catch(() => { setTabs([]); setTabId(''); });
     }, 800);
     return () => clearTimeout(timer);
-  }, [docUrl]);
+  }, [docUrl, mode]);
 
   useEffect(() => {
     if (logRef.current) {
@@ -62,11 +62,27 @@ export function ProcessForm() {
     setResult(null);
 
     try {
-      const res = await fetch('/api/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ docUrl, assetName: assetName || undefined, assetId: assetId || undefined, templateId: templateId || undefined, tabId: tabId || undefined }),
-      });
+      let res: Response;
+
+      if (mode === 'docx') {
+        if (!docxFile) throw new Error('Sélectionnez un fichier .docx');
+        const formData = new FormData();
+        formData.append('file', docxFile);
+        if (assetName) formData.append('assetName', assetName);
+        if (assetId) formData.append('assetId', assetId);
+        res = await fetch('/api/process', { method: 'POST', body: formData });
+      } else {
+        res = await fetch('/api/process', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            docUrl,
+            assetName: assetName || undefined,
+            assetId: assetId || undefined,
+            tabId: tabId || undefined,
+          }),
+        });
+      }
 
       if (!res.ok || !res.body) {
         const err = await res.json().catch(() => ({ error: 'Erreur inconnue' }));
@@ -121,49 +137,91 @@ export function ProcessForm() {
   }
 
   const isProcessing = status === 'loading';
+  const canSubmit = !isProcessing && (mode === 'gdoc' ? !!docUrl : !!docxFile);
 
   return (
     <div className="space-y-5">
-      {/* Form card */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
         <h2 className="text-base font-semibold text-slate-800 mb-5">Traiter un document</h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Doc URL */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              URL du Google Doc <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="url"
-              required
-              value={docUrl}
-              onChange={e => setDocUrl(e.target.value)}
+          {/* Source toggle */}
+          <div className="flex rounded-lg border border-slate-200 overflow-hidden text-sm font-medium">
+            <button
+              type="button"
+              onClick={() => { setMode('gdoc'); setDocxFile(null); }}
               disabled={isProcessing}
-              placeholder="https://docs.google.com/document/d/..."
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:opacity-50 disabled:bg-slate-50"
-            />
-          </div>
-
-          {/* Tab selector — always visible, empty when doc has no tabs */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Onglet du document
-            </label>
-            <select
-              value={tabId}
-              onChange={e => setTabId(e.target.value)}
-              disabled={isProcessing || tabs.length === 0}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:opacity-50 disabled:bg-slate-50 bg-white"
+              className={`flex-1 py-2 transition ${mode === 'gdoc' ? 'bg-emerald-500 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
             >
-              <option value="">{tabs.length === 0 ? '— Aucun onglet détecté —' : '— Premier onglet (défaut) —'}</option>
-              {tabs.map(t => (
-                <option key={t.tabId} value={t.tabId}>{t.title}</option>
-              ))}
-            </select>
+              Google Doc
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMode('docx'); setDocUrl(''); setTabs([]); setTabId(''); }}
+              disabled={isProcessing}
+              className={`flex-1 py-2 transition ${mode === 'docx' ? 'bg-emerald-500 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+            >
+              Fichier Word (.docx)
+            </button>
           </div>
 
-          {/* Asset name + ID row */}
+          {/* Google Doc inputs */}
+          {mode === 'gdoc' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  URL du Google Doc <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="url"
+                  required
+                  value={docUrl}
+                  onChange={e => setDocUrl(e.target.value)}
+                  disabled={isProcessing}
+                  placeholder="https://docs.google.com/document/d/..."
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:opacity-50 disabled:bg-slate-50"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Onglet du document
+                </label>
+                <select
+                  value={tabId}
+                  onChange={e => setTabId(e.target.value)}
+                  disabled={isProcessing || tabs.length === 0}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:opacity-50 disabled:bg-slate-50 bg-white"
+                >
+                  <option value="">{tabs.length === 0 ? '— Aucun onglet détecté —' : '— Premier onglet (défaut) —'}</option>
+                  {tabs.map(t => (
+                    <option key={t.tabId} value={t.tabId}>{t.title}</option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
+
+          {/* DOCX input */}
+          {mode === 'docx' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Fichier Word <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="file"
+                accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                disabled={isProcessing}
+                onChange={e => setDocxFile(e.target.files?.[0] ?? null)}
+                className="w-full text-sm text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 disabled:opacity-50"
+              />
+              {docxFile && (
+                <p className="text-xs text-slate-400 mt-1">{docxFile.name}</p>
+              )}
+            </div>
+          )}
+
+          {/* Asset name + ID */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Nom du bloc</label>
@@ -193,25 +251,7 @@ export function ProcessForm() {
             </div>
           </div>
 
-          {/* Template */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Template SFMC <span className="text-slate-400 font-normal">(optionnel)</span>
-            </label>
-            <select
-              value={templateId}
-              onChange={e => setTemplateId(e.target.value)}
-              disabled={isProcessing}
-              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 disabled:opacity-50 disabled:bg-slate-50 bg-white"
-            >
-              <option value="">— Aucun template —</option>
-              {templates.map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* CTA snippet helper */}
+          {/* CTA snippet */}
           <div className="flex items-center justify-between rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
             <div className="min-w-0 flex-1 mr-3">
               <p className="text-xs font-medium text-slate-600 mb-0.5">Snippet bouton CTA</p>
@@ -229,7 +269,7 @@ export function ProcessForm() {
           {/* Submit */}
           <button
             type="submit"
-            disabled={isProcessing || !docUrl}
+            disabled={!canSubmit}
             className="w-full py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-semibold text-sm transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {isProcessing ? (
@@ -251,7 +291,6 @@ export function ProcessForm() {
               <span className="text-xs text-emerald-400">{progress}%</span>
             )}
           </div>
-          {/* Progress bar */}
           {(isProcessing || status === 'done') && (
             <div className="h-1 bg-slate-700">
               <div
