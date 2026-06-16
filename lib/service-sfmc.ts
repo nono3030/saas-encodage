@@ -64,41 +64,54 @@ async function findAssetByName(name: string, tenant: TenantConfig, assetTypeId?:
 
 // ─── Image upload ─────────────────────────────────────────────────────────────
 
+const IMAGE_TYPE_MAP: Record<string, { id: number; name: string; ext: string }> = {
+  jpeg: { id: 23, name: 'jpeg', ext: 'jpg' },
+  jpg:  { id: 23, name: 'jpeg', ext: 'jpg' },
+  png:  { id: 28, name: 'png',  ext: 'png' },
+  gif:  { id: 20, name: 'gif',  ext: 'gif' },
+};
+
+function sfmcImageError(json: Record<string, unknown>): string {
+  const validation = (json.validationErrors as { message: string }[] | undefined)
+    ?.map(e => e.message).join('; ');
+  return validation || (json.message as string) || JSON.stringify(json).substring(0, 200);
+}
+
 export async function uploadImage(base64: string, rawName: string, mimeType: string, tenant: TenantConfig): Promise<string> {
   const token = await getToken(tenant);
   const config = buildConfig(tenant);
 
-  const ext = mimeType.split('/')[1]?.split('+')[0]?.toLowerCase() || 'jpg';
-  const cleanName = rawName.replace(/[^a-zA-Z0-9\-_ ]/g, '').trim().substring(0, 40) || 'Image';
+  const rawExt = mimeType.split('/')[1]?.split('+')[0]?.toLowerCase() || 'jpg';
+  const assetType = IMAGE_TYPE_MAP[rawExt] ?? IMAGE_TYPE_MAP.jpeg;
+  const ext = assetType.ext;
+
+  const cleanName = rawName.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9\-_ ]/g, '').trim().substring(0, 40) || 'Image';
   const hash = createHash('md5').update(base64.substring(0, 500)).digest('hex').substring(0, 6);
   const finalName = `${cleanName}_${hash}.${ext}`;
 
   const existing = await findAssetByName(finalName, tenant);
   if (existing?.url) return existing.url;
 
-  const typeMap: Record<string, { id: number; name: string }> = {
-    jpeg: { id: 23, name: 'jpeg' }, jpg: { id: 23, name: 'jpeg' },
-    png: { id: 28, name: 'png' }, gif: { id: 20, name: 'gif' },
-  };
-  const assetType = typeMap[ext] || typeMap.jpeg;
+  const payload = { name: finalName, assetType: { id: assetType.id, name: assetType.name }, file: base64, category: { id: config.imagesFolderId } };
 
   const res = await fetch(`${config.restUrl}/asset/v1/content/assets`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: finalName, assetType, file: base64, category: { id: config.imagesFolderId } }),
+    body: JSON.stringify(payload),
   });
   const json = await res.json();
   if (json.fileProperties?.publishedURL) return json.fileProperties.publishedURL;
 
+  // Retry with timestamp name in case of name conflict
   const fallbackName = `${cleanName}_${Date.now()}.${ext}`;
   const retry = await fetch(`${config.restUrl}/asset/v1/content/assets`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: fallbackName, assetType, file: base64, category: { id: config.imagesFolderId } }),
+    body: JSON.stringify({ ...payload, name: fallbackName }),
   });
   const retryJson = await retry.json();
   if (retryJson.fileProperties?.publishedURL) return retryJson.fileProperties.publishedURL;
-  throw new Error(`Image Upload Failed: ${retryJson.message || 'unknown error'}`);
+  throw new Error(`Image Upload Failed: ${sfmcImageError(retryJson)}`);
 }
 
 // ─── Upsert content block ────────────────────────────────────────────────────
