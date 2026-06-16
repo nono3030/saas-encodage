@@ -219,7 +219,7 @@ async function registerImage(
   const height = Math.round(heightPt * 1.333);
 
   if (!ctx.images[token]) {
-    ctx.images[token] = { base64: img.base64, name: altText || 'image', mimeType: img.mimeType, hash };
+    ctx.images[token] = { base64: img.base64, name: altText || `img_${hash}`, mimeType: img.mimeType, hash };
   }
 
   return { token, width, height };

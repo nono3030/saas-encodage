@@ -51,7 +51,12 @@ export async function executeProcess(
       htmlRaw = htmlRaw.split(token).join(url);
       imgCount++;
     } catch (e) {
-      log(`Erreur upload image: ${imgData.name} — ${(e as Error).message}`);
+      const msg = (e as Error).message;
+      if (msg.includes('Category') || msg.includes('folder')) {
+        log(`⚠️ Image ignorée : dossier SFMC introuvable — vérifiez sfmc_images_folder_id dans la config.`);
+      } else {
+        log(`⚠️ Image ignorée (upload échoué) : ${msg.substring(0, 120)}`);
+      }
     }
   }
   log(`${imgCount} image(s) traitée(s).`, 60);

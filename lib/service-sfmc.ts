@@ -152,10 +152,13 @@ export async function upsertAsset(html: string, name: string | undefined, tenant
   if (!rawBody.trim()) throw new Error(`SFMC réponse vide (HTTP ${res.status}).`);
   const json = JSON.parse(rawBody);
   if (res.ok) return { id: json.id, name: json.name };
-  const detail = json.validationErrors?.map((e: { message: string }) => e.message).join('; ')
+  const rawDetail = json.validationErrors?.map((e: { message: string }) => e.message).join('; ')
     || json.errors?.map((e: { message: string }) => e.message).join('; ')
     || json.message
     || `SFMC Error HTTP ${res.status}`;
+  const detail = rawDetail.includes('Category')
+    ? `Dossier SFMC introuvable (ID: ${config.contentFolderId}) — vérifiez sfmc_content_folder_id dans la configuration du tenant.`
+    : rawDetail;
   throw new Error(detail);
 }
 
