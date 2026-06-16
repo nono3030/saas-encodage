@@ -49,7 +49,7 @@ async function getToken(tenant: TenantConfig): Promise<string> {
 async function findAssetByName(name: string, tenant: TenantConfig, assetTypeId?: number): Promise<{ id: number; url?: string } | null> {
   const token = await getToken(tenant);
   const config = buildConfig(tenant);
-  let filter = `name eq '${encodeURIComponent(name)}'`;
+  let filter = `name eq '${name}'`;
   if (assetTypeId) filter += ` and assetType.id eq ${assetTypeId}`;
 
   const res = await fetch(
@@ -139,7 +139,11 @@ export async function upsertAsset(html: string, name: string | undefined, tenant
   if (!rawBody.trim()) throw new Error(`SFMC réponse vide (HTTP ${res.status}).`);
   const json = JSON.parse(rawBody);
   if (res.ok) return { id: json.id, name: json.name };
-  throw new Error(json.message || `SFMC Error HTTP ${res.status}`);
+  const detail = json.validationErrors?.map((e: { message: string }) => e.message).join('; ')
+    || json.errors?.map((e: { message: string }) => e.message).join('; ')
+    || json.message
+    || `SFMC Error HTTP ${res.status}`;
+  throw new Error(detail);
 }
 
 // ─── Templates ────────────────────────────────────────────────────────────────
